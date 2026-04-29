@@ -2,8 +2,13 @@ const express = require('express');
 const admin = require('firebase-admin');
 const app = express();
 app.use(express.json());
-if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
+
+if (!admin.apps.length) {
+  const cred = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  admin.initializeApp({ credential: admin.credential.cert(cred) });
+}
 const db = admin.firestore();
+
 app.post('/webhook', async (req, res) => {
   try {
     const body = req.body;
@@ -34,5 +39,6 @@ app.post('/webhook', async (req, res) => {
     res.send('ok');
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
+
 app.get('/', (req, res) => res.send('Mayara Webhook OK'));
 app.listen(process.env.PORT || 3000, () => console.log('Rodando!'));
