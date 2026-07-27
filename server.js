@@ -41,8 +41,9 @@ app.post('/webhook', async (req, res) => {
 });
 
 // Recebe snapshot do Instagram/Meta Ads gerado pelo Manus AI.
-// Sobrescreve sempre o mesmo documento (instagram_insights/atual) —
-// é o estado mais recente, não histórico acumulado.
+// Antes de sobrescrever 'atual', copia o valor vigente para 'anterior' —
+// assim o frontend sempre tem "hoje vs snapshot anterior" para variação,
+// sem precisar de histórico acumulado.
 app.post('/manus-instagram', async (req, res) => {
   try {
     const body = req.body;
@@ -51,7 +52,13 @@ app.post('/manus-instagram', async (req, res) => {
       return;
     }
 
-    await db.collection('instagram_insights').doc('atual').set({
+    const atualRef = db.collection('instagram_insights').doc('atual');
+    const atualSnap = await atualRef.get();
+    if (atualSnap.exists) {
+      await db.collection('instagram_insights').doc('anterior').set(atualSnap.data());
+    }
+
+    await atualRef.set({
       seguidores: body.seguidores || 0,
       alcance7d: body.alcance7d || 0,
       impressoes7d: body.impressoes7d || 0,
