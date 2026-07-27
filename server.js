@@ -40,54 +40,72 @@ app.post('/webhook', async (req, res) => {
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
-// Recebe snapshot do Instagram/Meta Ads gerado pelo Manus AI.
-// Antes de sobrescrever 'atual', copia o valor vigente para 'anterior' —
-// assim o frontend sempre tem "hoje vs snapshot anterior" para variação,
-// sem precisar de histórico acumulado.
+// Recebe snapshot do Instagram e/ou Meta Ads gerado pelo Manus AI.
+// Aceita chamadas PARCIAIS (só Instagram, ou só Meta Ads) — usa
+// merge:true pra nunca apagar campos que outra chamada acabou de
+// salvar minutos antes. O 'anterior' só é movido uma vez por dia
+// (na primeira chamada), não a cada chamada parcial subsequente.
 app.post('/manus-instagram', async (req, res) => {
   try {
     const body = req.body;
-    if (!body.seguidores && !body.campanhas) {
+
+    const temInstagramData = body.seguidores !== undefined;
+    const temMetaAdsData = body.campanhas !== undefined;
+    if (!temInstagramData && !temMetaAdsData) {
       res.status(400).send('payload invalido');
       return;
     }
 
-    const atualRef = db.collection('instagram_insights').doc('atual');
-    const atualSnap = await atualRef.get();
-    if (atualSnap.exists) {
-      await db.collection('instagram_insights').doc('anterior').set(atualSnap.data());
+    const docAtualRef = db.collection('instagram_insights').doc('atual');
+    const docAtualSnap = await docAtualRef.get();
+    const dadosAtuais = docAtualSnap.exists ? docAtualSnap.data() : null;
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const atualizadoHoje = dadosAtuais?.atualizadoEm?.slice(0, 10) === hoje;
+
+    // Só move para 'anterior' na PRIMEIRA chamada do dia, não a cada
+    // chamada parcial subsequente (evita sobrescrever o 'anterior' com
+    // um snapshot de minutos atrás, no mesmo dia).
+    if (dadosAtuais && !atualizadoHoje) {
+      await db.collection('instagram_insights').doc('anterior').set(dadosAtuais);
     }
 
-    await atualRef.set({
-      seguidores: body.seguidores || 0,
-      alcance7d: body.alcance7d || 0,
-      impressoes7d: body.impressoes7d || 0,
-      posts: body.posts || [],
-      investimento7d: body.investimento7d || 0,
-      custoPorResultado: body.custoPorResultado || 0,
-      campanhasMeta: body.campanhas || [],
-      atualizadoEm: new Date().toISOString()
-    });
+    // Só grava os campos que vieram nesta chamada — preserva o resto.
+    const camposParaAtualizar = {};
+    if (body.seguidores !== undefined) camposParaAtualizar.seguidores = body.seguidores;
+    if (body.alcance7d !== undefined) camposParaAtualizar.alcance7d = body.alcance7d;
+    if (body.impressoes7d !== undefined) camposParaAtualizar.impressoes7d = body.impressoes7d;
+    if (body.posts !== undefined) camposParaAtualizar.posts = body.posts;
+    if (body.investimento7d !== undefined) camposParaAtualizar.investimento7d = body.investimento7d;
+    if (body.custoPorResultado !== undefined) camposParaAtualizar.custoPorResultado = body.custoPorResultado;
+    if (body.campanhas !== undefined) camposParaAtualizar.campanhasMeta = body.campanhas;
+
+    camposParaAtualizar.atualizadoEm = new Date().toISOString();
+
+    await docAtualRef.set(camposParaAtualizar, { merge: true });
 
     // Histórico diário de seguidores — usado pela sub-aba Crescimento.
-    // ID do doc = data do dia, então rodar 2x no mesmo dia sobrescreve
-    // (nunca duplica) em vez de criar registro novo.
-    const hojeStr = new Date().toISOString().slice(0, 10);
-    const historicoRef = db.collection('instagram_historico');
-    const anteriorHistSnap = await historicoRef
-      .where('data', '<', hojeStr)
-      .orderBy('data', 'desc')
-      .limit(1)
-      .get();
-    const seguidoresAnterior = anteriorHistSnap.empty ? null : anteriorHistSnap.docs[0].data().seguidores;
-    const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
+    // Só roda quando 'seguidores' vem nesta chamada (a do Instagram),
+    // não na chamada só de Meta Ads. ID do doc = data do dia, então
+    // rodar 2x no mesmo dia sobrescreve (nunca duplica).
+    if (body.seguidores !== undefined) {
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const historicoRef = db.collection('instagram_historico');
+      const anteriorHistSnap = await historicoRef
+        .where('data', '<', hojeStr)
+        .orderBy('data', 'desc')
+        .limit(1)
+        .get();
+      const seguidoresAnterior = anteriorHistSnap.empty ? null : anteriorHistSnap.docs[0].data().seguidores;
+      const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
 
-    await historicoRef.doc(hojeStr).set({
-      data: hojeStr,
-      seguidores: body.seguidores || 0,
-      ganhoSeguidores: ganho,
-      diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
-    });
+      await historicoRef.doc(hojeStr).set({
+        data: hojeStr,
+        seguidores: body.seguidores || 0,
+        ganhoSeguidores: ganho,
+        diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
+      });
+    }
 
     res.send('ok');
   } catch(e) { console.error(e); res.status(500).send('error'); }
