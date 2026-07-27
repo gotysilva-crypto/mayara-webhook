@@ -40,5 +40,31 @@ app.post('/webhook', async (req, res) => {
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
+// Recebe snapshot do Instagram/Meta Ads gerado pelo Manus AI.
+// Sobrescreve sempre o mesmo documento (instagram_insights/atual) —
+// é o estado mais recente, não histórico acumulado.
+app.post('/manus-instagram', async (req, res) => {
+  try {
+    const body = req.body;
+    if (!body.seguidores && !body.campanhas) {
+      res.status(400).send('payload invalido');
+      return;
+    }
+
+    await db.collection('instagram_insights').doc('atual').set({
+      seguidores: body.seguidores || 0,
+      alcance7d: body.alcance7d || 0,
+      impressoes7d: body.impressoes7d || 0,
+      posts: body.posts || [],
+      investimento7d: body.investimento7d || 0,
+      custoPorResultado: body.custoPorResultado || 0,
+      campanhasMeta: body.campanhas || [],
+      atualizadoEm: new Date().toISOString()
+    });
+
+    res.send('ok');
+  } catch(e) { console.error(e); res.status(500).send('error'); }
+});
+
 app.get('/', (req, res) => res.send('Mayara Webhook OK'));
 app.listen(process.env.PORT || 3000, () => console.log('Rodando!'));
