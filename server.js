@@ -69,7 +69,60 @@ app.post('/manus-instagram', async (req, res) => {
       atualizadoEm: new Date().toISOString()
     });
 
+    // Histórico diário de seguidores — usado pela sub-aba Crescimento.
+    // ID do doc = data do dia, então rodar 2x no mesmo dia sobrescreve
+    // (nunca duplica) em vez de criar registro novo.
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const historicoRef = db.collection('instagram_historico');
+    const anteriorHistSnap = await historicoRef
+      .where('data', '<', hojeStr)
+      .orderBy('data', 'desc')
+      .limit(1)
+      .get();
+    const seguidoresAnterior = anteriorHistSnap.empty ? null : anteriorHistSnap.docs[0].data().seguidores;
+    const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
+
+    await historicoRef.doc(hojeStr).set({
+      data: hojeStr,
+      seguidores: body.seguidores || 0,
+      ganhoSeguidores: ganho,
+      diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
+    });
+
     res.send('ok');
+  } catch(e) { console.error(e); res.status(500).send('error'); }
+});
+
+// Importação retroativa em lote do histórico de seguidores — uso único,
+// diferente do /manus-instagram diário (que recebe 1 snapshot por vez).
+app.post('/manus-instagram-historico', async (req, res) => {
+  try {
+    const dias = req.body.historico;
+    if (!Array.isArray(dias) || dias.length === 0) {
+      res.status(400).send('formato invalido');
+      return;
+    }
+
+    dias.sort((a, b) => new Date(a.data) - new Date(b.data));
+
+    let anterior = null;
+    const batch = db.batch();
+
+    for (const dia of dias) {
+      const d = new Date(dia.data + 'T12:00:00');
+      const ganho = anterior !== null ? dia.seguidores - anterior : 0;
+      const ref = db.collection('instagram_historico').doc(dia.data);
+      batch.set(ref, {
+        data: dia.data,
+        seguidores: dia.seguidores,
+        ganhoSeguidores: ganho,
+        diaSemana: d.getDay()
+      });
+      anterior = dia.seguidores;
+    }
+
+    await batch.commit();
+    res.send(`ok - ${dias.length} dias importados`);
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
