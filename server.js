@@ -84,35 +84,46 @@ app.post('/manus-instagram', async (req, res) => {
 
     await docAtualRef.set(camposParaAtualizar, { merge: true });
 
-    // Histórico diário de seguidores — usado pela sub-aba Crescimento.
-    // Só roda quando 'seguidores' vem nesta chamada (a do Instagram),
-    // não na chamada só de Meta Ads. ID do doc = data do dia, então
-    // rodar 2x no mesmo dia sobrescreve (nunca duplica).
+    // Histórico diário — usado pela aba Crescimento (seguidores) e pelos
+    // KPIs "(mês)" do Instagram (alcance/impressões/resultados). Instagram
+    // (08:00) e Meta Ads (08:05) chegam em chamadas separadas no mesmo dia —
+    // merge:true pra uma não apagar o que a outra já gravou.
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const historicoUpdate = {
+      data: hojeStr,
+      diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
+    };
+
     if (body.seguidores !== undefined) {
-      const hojeStr = new Date().toISOString().slice(0, 10);
-      const historicoRef = db.collection('instagram_historico');
-      const anteriorHistSnap = await historicoRef
+      const anteriorHistSnap = await db.collection('instagram_historico')
         .where('data', '<', hojeStr)
         .orderBy('data', 'desc')
         .limit(1)
         .get();
       const seguidoresAnterior = anteriorHistSnap.empty ? null : anteriorHistSnap.docs[0].data().seguidores;
       const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
+      historicoUpdate.seguidores = body.seguidores || 0;
+      historicoUpdate.ganhoSeguidores = ganho;
+    }
+    if (body.alcanceHoje !== undefined) historicoUpdate.alcance = body.alcanceHoje;
+    if (body.impressoesHoje !== undefined) historicoUpdate.impressoes = body.impressoesHoje;
+    if (body.resultadosHoje !== undefined) historicoUpdate.resultados = body.resultadosHoje;
 
-      await historicoRef.doc(hojeStr).set({
-        data: hojeStr,
-        seguidores: body.seguidores || 0,
-        ganhoSeguidores: ganho,
-        diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
-      });
+    const temHistoricoData = body.seguidores !== undefined || body.alcanceHoje !== undefined ||
+      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined;
+    if (temHistoricoData) {
+      await db.collection('instagram_historico').doc(hojeStr).set(historicoUpdate, { merge: true });
     }
 
     res.send('ok');
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
-// Importação retroativa em lote do histórico de seguidores — uso único,
-// diferente do /manus-instagram diário (que recebe 1 snapshot por vez).
+// Importação retroativa em lote pro histórico diário — uso único/pontual.
+// Aceita entradas parciais (só seguidores, só alcance/impressoes/resultados,
+// ou tudo junto) e usa merge:true pra nunca apagar o que já existe no dia
+// (ex.: rodar isso pra preencher alcance/impressoes de dias que já têm
+// seguidores gravado pelo /manus-instagram diário).
 app.post('/manus-instagram-historico', async (req, res) => {
   try {
     const dias = req.body.historico;
@@ -123,20 +134,25 @@ app.post('/manus-instagram-historico', async (req, res) => {
 
     dias.sort((a, b) => new Date(a.data) - new Date(b.data));
 
-    let anterior = null;
+    let anteriorSeguidores = null;
     const batch = db.batch();
 
     for (const dia of dias) {
       const d = new Date(dia.data + 'T12:00:00');
-      const ganho = anterior !== null ? dia.seguidores - anterior : 0;
+      const doc = { data: dia.data, diaSemana: d.getDay() };
+
+      if (dia.seguidores !== undefined) {
+        const ganho = anteriorSeguidores !== null ? dia.seguidores - anteriorSeguidores : 0;
+        doc.seguidores = dia.seguidores;
+        doc.ganhoSeguidores = ganho;
+        anteriorSeguidores = dia.seguidores;
+      }
+      if (dia.alcance !== undefined) doc.alcance = dia.alcance;
+      if (dia.impressoes !== undefined) doc.impressoes = dia.impressoes;
+      if (dia.resultados !== undefined) doc.resultados = dia.resultados;
+
       const ref = db.collection('instagram_historico').doc(dia.data);
-      batch.set(ref, {
-        data: dia.data,
-        seguidores: dia.seguidores,
-        ganhoSeguidores: ganho,
-        diaSemana: d.getDay()
-      });
-      anterior = dia.seguidores;
+      batch.set(ref, doc, { merge: true });
     }
 
     await batch.commit();
