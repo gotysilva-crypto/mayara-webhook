@@ -108,13 +108,9 @@ app.post('/manus-instagram', async (req, res) => {
     if (body.alcanceHoje !== undefined) historicoUpdate.alcance = body.alcanceHoje;
     if (body.impressoesHoje !== undefined) historicoUpdate.impressoes = body.impressoesHoje;
     if (body.resultadosHoje !== undefined) historicoUpdate.resultados = body.resultadosHoje;
-    if (body.reelsHoje !== undefined) historicoUpdate.reels = body.reelsHoje;
-    if (body.postsHoje !== undefined) historicoUpdate.posts = body.postsHoje;
-    if (body.storiesHoje !== undefined) historicoUpdate.stories = body.storiesHoje;
 
     const temHistoricoData = body.seguidores !== undefined || body.alcanceHoje !== undefined ||
-      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined ||
-      body.reelsHoje !== undefined || body.postsHoje !== undefined || body.storiesHoje !== undefined;
+      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined;
     if (temHistoricoData) {
       await db.collection('instagram_historico').doc(hojeStr).set(historicoUpdate, { merge: true });
     }
@@ -154,9 +150,6 @@ app.post('/manus-instagram-historico', async (req, res) => {
       if (dia.alcance !== undefined) doc.alcance = dia.alcance;
       if (dia.impressoes !== undefined) doc.impressoes = dia.impressoes;
       if (dia.resultados !== undefined) doc.resultados = dia.resultados;
-      if (dia.reels !== undefined) doc.reels = dia.reels;
-      if (dia.posts !== undefined) doc.posts = dia.posts;
-      if (dia.stories !== undefined) doc.stories = dia.stories;
 
       const ref = db.collection('instagram_historico').doc(dia.data);
       batch.set(ref, doc, { merge: true });
@@ -164,6 +157,32 @@ app.post('/manus-instagram-historico', async (req, res) => {
 
     await batch.commit();
     res.send(`ok - ${dias.length} dias importados`);
+  } catch(e) { console.error(e); res.status(500).send('error'); }
+});
+
+// Realizado mensal de conteúdo (Reels/Posts/Stories) — total do PERÍODO,
+// não soma diária. Vem do painel "Formatos de conteúdo" do Meta Business
+// Suite, que já entrega o total do intervalo de datas selecionado — mais
+// confiável de coletar do que tentar quebrar por dia. Aceita chamadas
+// parciais (merge:true): a tarefa diária manda o mês vigente, o backfill
+// manda um POST por mês passado.
+app.post('/manus-conteudo-mes', async (req, res) => {
+  try {
+    const body = req.body;
+    if (!body.mes || !body.ano) {
+      res.status(400).send('mes e ano obrigatorios');
+      return;
+    }
+    const norm = String(body.mes).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const slug = `${body.ano}-${norm}`;
+
+    const doc = { mes: body.mes, ano: body.ano, atualizadoEm: new Date().toISOString() };
+    if (body.reels !== undefined) doc.reels = body.reels;
+    if (body.posts !== undefined) doc.posts = body.posts;
+    if (body.stories !== undefined) doc.stories = body.stories;
+
+    await db.collection('conteudo_realizado').doc(slug).set(doc, { merge: true });
+    res.send('ok');
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
