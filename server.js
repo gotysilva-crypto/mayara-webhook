@@ -108,9 +108,13 @@ app.post('/manus-instagram', async (req, res) => {
     if (body.alcanceHoje !== undefined) historicoUpdate.alcance = body.alcanceHoje;
     if (body.impressoesHoje !== undefined) historicoUpdate.impressoes = body.impressoesHoje;
     if (body.resultadosHoje !== undefined) historicoUpdate.resultados = body.resultadosHoje;
+    if (body.reelsHoje !== undefined) historicoUpdate.reels = body.reelsHoje;
+    if (body.postsHoje !== undefined) historicoUpdate.posts = body.postsHoje;
+    if (body.storiesHoje !== undefined) historicoUpdate.stories = body.storiesHoje;
 
     const temHistoricoData = body.seguidores !== undefined || body.alcanceHoje !== undefined ||
-      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined;
+      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined ||
+      body.reelsHoje !== undefined || body.postsHoje !== undefined || body.storiesHoje !== undefined;
     if (temHistoricoData) {
       await db.collection('instagram_historico').doc(hojeStr).set(historicoUpdate, { merge: true });
     }
@@ -150,6 +154,9 @@ app.post('/manus-instagram-historico', async (req, res) => {
       if (dia.alcance !== undefined) doc.alcance = dia.alcance;
       if (dia.impressoes !== undefined) doc.impressoes = dia.impressoes;
       if (dia.resultados !== undefined) doc.resultados = dia.resultados;
+      if (dia.reels !== undefined) doc.reels = dia.reels;
+      if (dia.posts !== undefined) doc.posts = dia.posts;
+      if (dia.stories !== undefined) doc.stories = dia.stories;
 
       const ref = db.collection('instagram_historico').doc(dia.data);
       batch.set(ref, doc, { merge: true });
