@@ -95,12 +95,19 @@ app.post('/manus-instagram', async (req, res) => {
     };
 
     if (body.seguidores !== undefined) {
+      // Busca os últimos dias e pega o primeiro que realmente tem 'seguidores'
+      // gravado — dias com update parcial (só resultados, por exemplo) não
+      // servem de base pro cálculo do ganho, senão vira NaN/null.
       const anteriorHistSnap = await db.collection('instagram_historico')
         .where('data', '<', hojeStr)
         .orderBy('data', 'desc')
-        .limit(1)
+        .limit(10)
         .get();
-      const seguidoresAnterior = anteriorHistSnap.empty ? null : anteriorHistSnap.docs[0].data().seguidores;
+      let seguidoresAnterior = null;
+      for (const doc of anteriorHistSnap.docs) {
+        const v = doc.data().seguidores;
+        if (typeof v === 'number') { seguidoresAnterior = v; break; }
+      }
       const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
       historicoUpdate.seguidores = body.seguidores || 0;
       historicoUpdate.ganhoSeguidores = ganho;
