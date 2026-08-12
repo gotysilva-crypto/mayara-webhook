@@ -153,6 +153,12 @@ app.post('/manus-instagram-historico', async (req, res) => {
         doc.seguidores = dia.seguidores;
         doc.ganhoSeguidores = ganho;
         anteriorSeguidores = dia.seguidores;
+      } else if (dia.ganhoSeguidores !== undefined) {
+        // Ganho informado direto pelo chamador (ex.: lido do gráfico de
+        // Tendências do Meta Business Suite) — mais confiável que calcular
+        // por diferença entre dias, e é o formato que a rotina diária usa
+        // pra gravar o ganho de ontem sem precisar do total absoluto.
+        doc.ganhoSeguidores = dia.ganhoSeguidores;
       }
       if (dia.alcance !== undefined) doc.alcance = dia.alcance;
       if (dia.impressoes !== undefined) doc.impressoes = dia.impressoes;
