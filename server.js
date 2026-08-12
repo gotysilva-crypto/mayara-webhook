@@ -187,6 +187,15 @@ app.post('/manus-conteudo-mes', async (req, res) => {
     if (body.reels !== undefined) doc.reels = body.reels;
     if (body.posts !== undefined) doc.posts = body.posts;
     if (body.stories !== undefined) doc.stories = body.stories;
+    // Total acumulado do mês (1º ao dia da coleta), sobrescrito a cada
+    // chamada — não é soma diária, é o valor já acumulado lido direto do
+    // painel. Inclui orgânico + anúncios (mesma definição usada desde sempre
+    // no histórico diário).
+    if (body.alcanceMes !== undefined) doc.alcanceMes = body.alcanceMes;
+    if (body.impressoesMes !== undefined) doc.impressoesMes = body.impressoesMes;
+    // Investimento do mês: soma das transações "Pago" em Cobrança e
+    // Pagamentos no período (1º do mês até o dia da coleta).
+    if (body.investimentoMes !== undefined) doc.investimentoMes = body.investimentoMes;
 
     await db.collection('conteudo_realizado').doc(slug).set(doc, { merge: true });
     res.send('ok');
