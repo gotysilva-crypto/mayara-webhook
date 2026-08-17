@@ -84,43 +84,11 @@ app.post('/manus-instagram', async (req, res) => {
 
     await docAtualRef.set(camposParaAtualizar, { merge: true });
 
-    // Histórico diário — usado pela aba Crescimento (seguidores) e pelos
-    // KPIs "(mês)" do Instagram (alcance/impressões/resultados). Instagram
-    // (08:00) e Meta Ads (08:05) chegam em chamadas separadas no mesmo dia —
-    // merge:true pra uma não apagar o que a outra já gravou.
-    const hojeStr = new Date().toISOString().slice(0, 10);
-    const historicoUpdate = {
-      data: hojeStr,
-      diaSemana: new Date(hojeStr + 'T12:00:00').getDay()
-    };
-
-    if (body.seguidores !== undefined) {
-      // Busca os últimos dias e pega o primeiro que realmente tem 'seguidores'
-      // gravado — dias com update parcial (só resultados, por exemplo) não
-      // servem de base pro cálculo do ganho, senão vira NaN/null.
-      const anteriorHistSnap = await db.collection('instagram_historico')
-        .where('data', '<', hojeStr)
-        .orderBy('data', 'desc')
-        .limit(10)
-        .get();
-      let seguidoresAnterior = null;
-      for (const doc of anteriorHistSnap.docs) {
-        const v = doc.data().seguidores;
-        if (typeof v === 'number') { seguidoresAnterior = v; break; }
-      }
-      const ganho = seguidoresAnterior !== null ? (body.seguidores || 0) - seguidoresAnterior : 0;
-      historicoUpdate.seguidores = body.seguidores || 0;
-      historicoUpdate.ganhoSeguidores = ganho;
-    }
-    if (body.alcanceHoje !== undefined) historicoUpdate.alcance = body.alcanceHoje;
-    if (body.impressoesHoje !== undefined) historicoUpdate.impressoes = body.impressoesHoje;
-    if (body.resultadosHoje !== undefined) historicoUpdate.resultados = body.resultadosHoje;
-
-    const temHistoricoData = body.seguidores !== undefined || body.alcanceHoje !== undefined ||
-      body.impressoesHoje !== undefined || body.resultadosHoje !== undefined;
-    if (temHistoricoData) {
-      await db.collection('instagram_historico').doc(hojeStr).set(historicoUpdate, { merge: true });
-    }
+    // NÃO grava mais em instagram_historico daqui. O ganho diário de
+    // seguidores agora vem só de /manus-instagram-historico (lido direto do
+    // gráfico de Tendências do Meta, valor real) -- esse endpoint calculando
+    // seu próprio "ganho" a partir de sobras de campo 'seguidores' de dias
+    // anteriores conflitava com isso e sobrescrevia o valor correto.
 
     res.send('ok');
   } catch(e) { console.error(e); res.status(500).send('error'); }
