@@ -176,5 +176,32 @@ app.post('/manus-conteudo-mes', async (req, res) => {
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
+// Exporta todas as coleções do Firestore em JSON, pra backup diário.
+// Protegido por header secreto (BACKUP_SECRET no Render) -- sem isso
+// qualquer pessoa com o link veria dados reais de pacientes.
+const BACKUP_COLLECTIONS = [
+  'leads', 'leads_manual', 'appointments', 'patients', 'transacoes',
+  'campaigns', 'calculadora_procs', 'estoque_itens', 'resultados_notas',
+  'estrategico', 'metas_config', 'metas_conteudo', 'activity_logs',
+  'instagram_insights', 'instagram_historico', 'conteudo_realizado'
+];
+
+app.get('/backup', async (req, res) => {
+  try {
+    if (!process.env.BACKUP_SECRET || req.get('x-backup-secret') !== process.env.BACKUP_SECRET) {
+      res.status(401).send('unauthorized');
+      return;
+    }
+    const out = { geradoEm: new Date().toISOString(), colecoes: {} };
+    for (const nome of BACKUP_COLLECTIONS) {
+      const snap = await db.collection(nome).get();
+      const docs = {};
+      snap.forEach(doc => { docs[doc.id] = doc.data(); });
+      out.colecoes[nome] = docs;
+    }
+    res.json(out);
+  } catch(e) { console.error(e); res.status(500).send('error'); }
+});
+
 app.get('/', (req, res) => res.send('Mayara Webhook OK'));
 app.listen(process.env.PORT || 3000, () => console.log('Rodando!'));
