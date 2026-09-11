@@ -40,12 +40,22 @@ app.post('/webhook', async (req, res) => {
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
+// Protege os endpoints /manus-* -- só a rotina diária (Claude Code) chama
+// esses, ninguém de fora deveria conseguir mandar dado falso de Instagram.
+function checkManusSecret(req, res, next) {
+  if (!process.env.MANUS_SECRET || req.get('x-manus-secret') !== process.env.MANUS_SECRET) {
+    res.status(401).send('unauthorized');
+    return;
+  }
+  next();
+}
+
 // Recebe snapshot do Instagram e/ou Meta Ads gerado pelo Manus AI.
 // Aceita chamadas PARCIAIS (só Instagram, ou só Meta Ads) — usa
 // merge:true pra nunca apagar campos que outra chamada acabou de
 // salvar minutos antes. O 'anterior' só é movido uma vez por dia
 // (na primeira chamada), não a cada chamada parcial subsequente.
-app.post('/manus-instagram', async (req, res) => {
+app.post('/manus-instagram', checkManusSecret, async (req, res) => {
   try {
     const body = req.body;
 
@@ -99,7 +109,7 @@ app.post('/manus-instagram', async (req, res) => {
 // ou tudo junto) e usa merge:true pra nunca apagar o que já existe no dia
 // (ex.: rodar isso pra preencher alcance/impressoes de dias que já têm
 // seguidores gravado pelo /manus-instagram diário).
-app.post('/manus-instagram-historico', async (req, res) => {
+app.post('/manus-instagram-historico', checkManusSecret, async (req, res) => {
   try {
     const dias = req.body.historico;
     if (!Array.isArray(dias) || dias.length === 0) {
@@ -147,7 +157,7 @@ app.post('/manus-instagram-historico', async (req, res) => {
 // confiável de coletar do que tentar quebrar por dia. Aceita chamadas
 // parciais (merge:true): a tarefa diária manda o mês vigente, o backfill
 // manda um POST por mês passado.
-app.post('/manus-conteudo-mes', async (req, res) => {
+app.post('/manus-conteudo-mes', checkManusSecret, async (req, res) => {
   try {
     const body = req.body;
     if (!body.mes || !body.ano) {
