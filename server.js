@@ -193,7 +193,8 @@ const BACKUP_COLLECTIONS = [
   'leads', 'leads_manual', 'appointments', 'patients', 'transacoes',
   'campaigns', 'calculadora_procs', 'estoque_itens', 'resultados_notas',
   'estrategico', 'metas_config', 'metas_conteudo', 'activity_logs',
-  'instagram_insights', 'instagram_historico', 'conteudo_realizado'
+  'instagram_insights', 'instagram_historico', 'conteudo_realizado',
+  'post_procedure_checklists'
 ];
 
 app.get('/backup', async (req, res) => {
