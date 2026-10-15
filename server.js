@@ -214,5 +214,33 @@ app.get('/backup', async (req, res) => {
   } catch(e) { console.error(e); res.status(500).send('error'); }
 });
 
+// Preenche CPF / data de nascimento de pacientes a partir dos documentos
+// escaneados. Só grava campo que está VAZIO no cadastro (nunca sobrescreve),
+// só aceita os campos cpf e nasc, e valida o formato.
+app.post('/patients-fill', checkManusSecret, async (req, res) => {
+  try {
+    const updates = req.body.updates;
+    if (!Array.isArray(updates) || updates.length === 0 || updates.length > 100) {
+      res.status(400).send('formato invalido'); return;
+    }
+    const resultado = [];
+    for (const u of updates) {
+      const ref = db.collection('patients').doc(String(u.docId || ''));
+      const snap = await ref.get();
+      if (!snap.exists) { resultado.push({docId: u.docId, erro: 'paciente nao encontrada'}); continue; }
+      const atual = snap.data();
+      const patch = {};
+      if (u.cpf && /^[0-9]{3}[.][0-9]{3}[.][0-9]{3}-[0-9]{2}$/.test(u.cpf) && !atual.cpf) patch.cpf = u.cpf;
+      if (u.nasc && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(u.nasc) && !atual.nasc) patch.nasc = u.nasc;
+      if (Object.keys(patch).length) {
+        patch.editadoEm = new Date().toISOString();
+        await ref.set(patch, { merge: true });
+      }
+      resultado.push({docId: u.docId, nome: atual.nome, gravou: Object.keys(patch).filter(k => k !== 'editadoEm')});
+    }
+    res.json(resultado);
+  } catch(e) { console.error(e); res.status(500).send('error'); }
+});
+
 app.get('/', (req, res) => res.send('Mayara Webhook OK'));
 app.listen(process.env.PORT || 3000, () => console.log('Rodando!'));
